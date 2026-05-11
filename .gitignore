@@ -1,0 +1,43 @@
+# Environment Variables
+.env
+.env.local
+.env.*.local
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS Files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Streamlit
+.streamlit/secrets.toml
+
+# Temp files
+*.log
+*.tmp
+temp_*
+
+# Generated files
+*.pdf
+*.xlsx
+temp_report_assets/
+
+# Sensitive data
+api_keys.txt
+credentials.json

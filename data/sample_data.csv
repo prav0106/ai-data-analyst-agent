@@ -1,0 +1,11 @@
+date,product,category,region,sales,quantity,profit,customer_age
+2024-01-01,Laptop,Electronics,North,1500,2,300,28
+2024-01-01,Shirt,Clothing,South,50,5,10,35
+2024-01-02,Phone,Electronics,East,800,1,150,42
+2024-01-02,Jeans,Clothing,West,80,3,20,25
+2024-01-03,Tablet,Electronics,North,600,2,120,38
+2024-01-03,Dress,Clothing,South,120,2,30,29
+2024-01-04,Camera,Electronics,East,1200,1,240,45
+2024-01-04,Shoes,Clothing,West,90,2,25,33
+2024-01-05,Headphones,Electronics,North,200,3,40,22
+2024-01-05,Jacket,Clothing,South,300,1,60,40
