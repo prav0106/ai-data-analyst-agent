@@ -19,7 +19,6 @@ load_dotenv()  # loads GOOGLE_API_KEY from .env if present
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from agent.orchestrator import DataAnalystAgent
-from tools.data_tools import DataTools
 from tools.quality_tools import generate_data_quality_report
 from tools.report_generator import ReportGenerator
 
@@ -76,7 +75,7 @@ def initialize_session_state():
         "current_df": None, "data_name": "", "analysis_count": 0,
         "suggested_qs": [], "last_ai_response": "", "quality_report": "",
         "agent_error": "", "init_attempted": False, "export_cache": {},
-        "agent_model": MODELS[0],
+        "agent_model": MODELS[0], "privacy_mode": "Standard",
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -181,17 +180,34 @@ def user_bubble(text: str, time: str) -> str:
 # ============================================
 # DATA HELPERS
 # ============================================
-def load_dataframe(path: str, name: str):
-    """Load a CSV into the agent's global store + session, refresh quality/suggestions."""
-    DataTools().load_csv_direct(path, "uploaded_data")
-    df = pd.read_csv(path)
+def set_loaded_dataframe(df: pd.DataFrame, name: str):
+    """Store an already-validated dataframe for the current Streamlit session."""
     st.session_state.current_df = df
     st.session_state.data_loaded = True
     st.session_state.data_name = name
     st.session_state.quality_report = generate_data_quality_report(df)
     st.session_state.suggested_qs = suggest_for(df)
+    st.session_state.export_cache = {}
     if st.session_state.agent is not None:
+        st.session_state.agent.set_dataframe(df)
         st.session_state.agent.current_quality = st.session_state.quality_report
+
+
+def load_dataframe(path: str, name: str):
+    """Load a local CSV (used by the bundled sample dataset)."""
+    set_loaded_dataframe(pd.read_csv(path), name)
+
+
+def load_uploaded_dataframe(uploaded_file) -> None:
+    """Load an uploaded CSV directly from memory; never trust its filename as a path."""
+    max_upload_bytes = 50 * 1024 * 1024
+    if uploaded_file.size > max_upload_bytes:
+        st.error("This CSV is larger than the 50 MB upload limit.")
+        return
+    try:
+        set_loaded_dataframe(pd.read_csv(uploaded_file), uploaded_file.name)
+    except (pd.errors.EmptyDataError, pd.errors.ParserError, UnicodeDecodeError, ValueError) as exc:
+        st.error(f"Could not read this CSV: {exc}")
 
 
 def suggest_for(df: pd.DataFrame) -> list:
@@ -388,7 +404,10 @@ def get_default_key() -> str:
 
 def init_agent(api_key: str, model: str) -> bool:
     try:
-        st.session_state.agent = DataAnalystAgent(api_key=api_key, model=model)
+        st.session_state.agent = DataAnalystAgent(
+            api_key=api_key, model=model, privacy_mode=st.session_state.privacy_mode)
+        if st.session_state.current_df is not None:
+            st.session_state.agent.set_dataframe(st.session_state.current_df)
         st.session_state.agent_model = model
         st.session_state.agent_error = ""
         return True
@@ -440,6 +459,17 @@ def main():
 
         model = st.selectbox("Model", MODELS,
                              help="Flash-lite is fastest & cheapest · Pro is deepest")
+        privacy_mode = st.selectbox(
+            "Data privacy mode", ["Standard", "Local analysis only"],
+            key="privacy_mode",
+            help="Local analysis only never sends sample rows to Gemini. PII-like columns are always masked.")
+        if st.session_state.agent is not None:
+            st.session_state.agent.set_privacy_mode(privacy_mode)
+        st.caption("🔒 Email, phone, API key, password, Aadhaar/PAN, card and address-like columns are excluded from AI analysis.")
+        if privacy_mode == "Standard":
+            st.caption("Standard mode may send non-sensitive sample rows and aggregate statistics to Gemini for explanations.")
+        else:
+            st.caption("Local mode sends schema/statistics and local calculation results, but not sample rows.")
 
         if st.session_state.agent is None:
             if st.button("🚀 Connect Gemini", width='stretch', type="primary"):
@@ -529,10 +559,17 @@ def main():
 
             c1, c2, _ = st.columns([1.4, 1, .4])
             with c1:
-                st.file_uploader("Upload your CSV", type=["csv"], key="welcome_upload",
-                                 label_visibility="collapsed")
+                welcome_file = st.file_uploader("Upload your CSV", type=["csv"], key="welcome_upload",
+                                                label_visibility="collapsed")
+                if welcome_file is not None:
+                    st.caption(f"Ready to analyze: **{welcome_file.name}**")
+                    if st.button("▶️ Start Analysis", key="start_welcome_analysis", width='stretch', type="primary"):
+                        load_uploaded_dataframe(welcome_file)
+                        if st.session_state.data_loaded:
+                            st.toast(f"{welcome_file.name} loaded ✅", icon="📥")
+                            st.rerun()
             with c2:
-                if st.button("✨ Try sample dataset", width='stretch', type="primary"):
+                if st.button("✨ Try sample dataset", width='stretch'):
                     load_dataframe(SAMPLE_CSV, "sample_data.csv")
                     st.toast("Sample dataset loaded — explore the tabs below 👀", icon="📊")
                     st.rerun()
@@ -544,16 +581,12 @@ def main():
                     new_file = st.file_uploader("Upload your CSV", type=["csv"], key="main_upload",
                                                 label_visibility="collapsed")
                     if new_file is not None:
-                        tmp = os.path.join(BASE_DIR, f"temp_{new_file.name}")
-                        with open(tmp, "wb") as f:
-                            f.write(new_file.getbuffer())
-                        try:
-                            load_dataframe(tmp, new_file.name)
-                            st.toast(f"{new_file.name} loaded ✅", icon="📥")
-                            st.rerun()
-                        finally:
-                            if os.path.exists(tmp):
-                                os.remove(tmp)
+                        st.caption(f"Ready to analyze: **{new_file.name}**")
+                        if st.button("▶️ Analyze this dataset", key="start_replacement_analysis", type="primary"):
+                            load_uploaded_dataframe(new_file)
+                            if st.session_state.data_loaded:
+                                st.toast(f"{new_file.name} loaded ✅", icon="📥")
+                                st.rerun()
 
                 if st.session_state.chat_history:
                     render_chat()
@@ -715,9 +748,23 @@ def main():
             num_cols = df.select_dtypes(include=["number"]).columns.tolist()
             cat_cols = df.select_dtypes(include=["object"]).columns.tolist()
 
-            c0, c1, c2, c3 = st.columns([1.2, 1, 1, 1])
-            chart_type = c0.selectbox("Chart type", ["Bar", "Line", "Scatter", "Histogram", "Box", "Pie"])
+            available_chart_types = []
+            if num_cols:
+                available_chart_types.extend(["Bar", "Line", "Histogram", "Box"])
+            if len(num_cols) >= 2:
+                available_chart_types.append("Scatter")
+            if cat_cols:
+                available_chart_types.append("Pie")
+            if not (num_cols or cat_cols):
+                st.warning("This dataset has no numeric or text columns available for charting.")
+                available_chart_types = []
+
             fig = None
+            if available_chart_types:
+                c0, c1, c2, c3 = st.columns([1.2, 1, 1, 1])
+                chart_type = c0.selectbox("Chart type", available_chart_types)
+            else:
+                chart_type = None
 
             try:
                 if chart_type == "Bar":
