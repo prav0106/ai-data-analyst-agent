@@ -76,10 +76,16 @@ def initialize_session_state():
         "current_df": None, "data_name": "", "analysis_count": 0,
         "suggested_qs": [], "last_ai_response": "", "quality_report": "",
         "agent_error": "", "init_attempted": False, "export_cache": {},
+        "agent_model": MODELS[0],
     }
     for k, v in defaults.items():
         if k not in st.session_state:
             st.session_state[k] = v
+
+
+def current_model_name() -> str:
+    """Return the currently-selected Gemini model name."""
+    return st.session_state.agent_model
 
 
 # ============================================
@@ -113,7 +119,7 @@ def hero_html() -> str:
     df = st.session_state.current_df
 
     if agent is not None:
-        engine_chip = chip(f"<b>Gemini</b>&nbsp;· {agent.llm.model_name}", "good")
+        engine_chip = chip(f"<b>Gemini</b>&nbsp;· {current_model_name()}", "good")
     else:
         engine_chip = chip("AI engine offline — add API key", "warn")
 
@@ -383,6 +389,7 @@ def get_default_key() -> str:
 def init_agent(api_key: str, model: str) -> bool:
     try:
         st.session_state.agent = DataAnalystAgent(api_key=api_key, model=model)
+        st.session_state.agent_model = model
         st.session_state.agent_error = ""
         return True
     except Exception as e:
@@ -421,7 +428,7 @@ def main():
 
         if st.session_state.agent is not None:
             st.markdown('<span class="status-pill on"><span class="dot"></span>'
-                        f'Connected · {st.session_state.agent.llm.model_name}</span>',
+                        f'Connected · {current_model_name()}</span>',
                         unsafe_allow_html=True)
         else:
             st.markdown('<span class="status-pill off"><span class="dot"></span>Offline</span>',
