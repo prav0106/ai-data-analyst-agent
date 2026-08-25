@@ -13,6 +13,9 @@ import plotly.express as px
 import plotly.graph_objects as go
 import plotly.io as pio
 import streamlit as st
+from dotenv import load_dotenv
+
+load_dotenv()  # loads GOOGLE_API_KEY from .env if present
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from agent.orchestrator import DataAnalystAgent
